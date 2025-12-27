@@ -1,16 +1,71 @@
 ---
-title: "Revisió crítica de: *Chocolate Consumption, Cognitive Function and Nobel Laureates* (Franz H. Messerli, M.D.)"
-authors:
-  - name: "Andrea Acuña, Silvia Barreda, Paula Blasco, Sara Naranjo i Laia Valls"
+title: "Fórmula 1 (Grup F6)"
+
+authors: 
+  - name: "Silvia Barreda, Paula Blasco, Sara Naranjo i Laia Valls" 
     affiliation: "Universitat Autònoma de Barcelona"
 date: ""
-abstract: >
-  Resumim i valorem de manera crítica l’estudi que relaciona el consum de xocolata amb el nombre de premis Nobel per càpita. Trobem una correlació positiva alta a partir de dades agregades, però assenyalem limitacions importants (falàcia ecològica, problemes temporals i factors de confusió), de manera que no es pot inferir causalitat. Complementem el debat amb evidència clínica recent sobre cacau/flavanols i cognició.
+
+abstract: 
+  Fer cap al final
 output:
   rticles::arxiv_article:
     keep_tex: true
 bibliography: references.bib
-link-citations: yes
 ---
+\newpage
+
+# Índex
+\tableofcontents
+\newpage
+
+# Resum
+
+\newpage
+
+# Lectura de dades
+*(Origen: Sportmonks / altres. Com es descarreguen, format, neteja inicial.)*
+
+## Diccionari de variables
+*(Taula curta de camps clau: cursa, circuit, meteo, escuderia, pilot, posicions, voltes, etc.)*
+\newpage
+
+# Materials i Mètodes
+## Objectiu
+*(Què volem predir/explicar: p. ex., posició final, punts, abandons…)*
+
+## Pipeline
+*(Neteja → feature engineering → particions train/test → models.)*
+
+## Models
+*(Llistat: p. ex., regressió/GBM/XGBoost/Random Forest; hiperparàmetres bàsics.)*
+
+## Mètriques
+*(RMSE/MAE/Accuracy/Log-loss/AUC segons el target.)*
+\newpage
+
+# Resultats
+## Descripció inicial
+*(Gràfics: resultats per circuit, meteo, hora, escuderia, any…)*
+
+## Rendiment dels models
+*(Taula comparativa i figures.)*
+\newpage
+
+# Validació dels models
+## Esquema de validació
+*(CV per temporada/circuit, *time-based split*, fugues d’informació evitades.)*
+
+## Robustesa i biaixos
+*(Error per circuit/meteo/equip; anàlisi d’errors i casos atípics.)*
+\newpage
+
+# Conclusions
+\newpage
+
+# Bibliografia
+
+
+
 
 
