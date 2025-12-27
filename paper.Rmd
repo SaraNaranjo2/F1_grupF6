@@ -1,1 +1,16 @@
+---
+title: "Revisió crítica de: *Chocolate Consumption, Cognitive Function and Nobel Laureates* (Franz H. Messerli, M.D.)"
+authors:
+  - name: "Andrea Acuña, Silvia Barreda, Paula Blasco, Sara Naranjo i Laia Valls"
+    affiliation: "Universitat Autònoma de Barcelona"
+date: ""
+abstract: >
+  Resumim i valorem de manera crítica l’estudi que relaciona el consum de xocolata amb el nombre de premis Nobel per càpita. Trobem una correlació positiva alta a partir de dades agregades, però assenyalem limitacions importants (falàcia ecològica, problemes temporals i factors de confusió), de manera que no es pot inferir causalitat. Complementem el debat amb evidència clínica recent sobre cacau/flavanols i cognició.
+output:
+  rticles::arxiv_article:
+    keep_tex: true
+bibliography: references.bib
+link-citations: yes
+---
+
 
