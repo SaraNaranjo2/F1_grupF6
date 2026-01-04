@@ -48,41 +48,52 @@ library(purrr)
 library(readr)
 library(stringr)
 library(tidyr)
+library(lubridate)
 
 # =========================
 # 1) Config
 # =========================
 BASE <- "https://api.openf1.org/v1"
 
-out_dir <- "data_openf1"
+# IMPORTANT: NO OneDrive. Usa carpeta local.
+out_dir <- "C:/projects/consultoria_f1/data_openf1"
 dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
 
-# Si tens token OpenF1 (opcional), posa'l aquí (si no, deixa'l buit)
-OPENF1_TOKEN <- Sys.getenv("OPENF1_TOKEN")  # recomanat guardar-ho com a env var
+OPENF1_TOKEN <- Sys.getenv("OPENF1_TOKEN")
 
-openf1_get <- function(endpoint, query = list(), retries = 5) {
+openf1_get <- function(endpoint, query = list(), retries = 5,
+                       connect_timeout = 30, read_timeout = 120) {
   url <- paste0(BASE, "/", endpoint)
 
-  # Capçalera opcional (només si tens token)
-  headers <- add_headers()
+  headers <- add_headers(`User-Agent` = "R (httr) - consultoria UAB")
   if (nzchar(OPENF1_TOKEN)) {
-    # La doc d'auth és a openf1.org/auth; el mètode exacte pot variar segons compte.
-    # Si no et funciona, elimina aquesta capçalera i usa mode anònim.
-    headers <- add_headers(Authorization = paste("Bearer", OPENF1_TOKEN))
+    headers <- add_headers(
+      `User-Agent` = "R (httr) - consultoria UAB",
+      Authorization = paste("Bearer", OPENF1_TOKEN)
+    )
   }
 
   for (i in seq_len(retries)) {
-    resp <- GET(url, query = query, headers, timeout(30))
+    resp <- GET(
+      url,
+      query = query,
+      headers,
+      config(connecttimeout = connect_timeout),
+      timeout(read_timeout)
+    )
+
     if (status_code(resp) == 200) {
       txt <- content(resp, as = "text", encoding = "UTF-8")
-      return(fromJSON(txt, flatten = TRUE))
+      out <- fromJSON(txt, flatten = TRUE)
+      return(out)
     }
+
     Sys.sleep(0.8 * i)
   }
+
   stop("GET failed: ", endpoint, " | last status: ", status_code(resp))
 }
 
-# Helper per escriure CSV de forma consistent
 write_csv_safe <- function(df, path) {
   if (is.null(df) || length(df) == 0) {
     message("  (buit) ", basename(path))
@@ -93,101 +104,108 @@ write_csv_safe <- function(df, path) {
   invisible(df)
 }
 
-# =========================
-# 2) 1r pas: obtenir sessions de cursa ("Race")
-# =========================
-# Pots filtrar per any amb session_key/meeting_key si vols acotar.
-# Aquí baixem totes les sessions i després filtrem "Race".
-sessions <- openf1_get("sessions")
+# Helpers robustos
+has_col <- function(df, col) col %in% names(df)
 
-sessions_race <- sessions %>%
-  as_tibble() %>%
-  filter(tolower(session_name) %in% c("race", "grand prix")) %>%
-  # Alguns caps de setmana tenen "Race" i "Sprint" -> si vols només GP, deixa "race".
+safe_tbl <- function(x) {
+  if (is.null(x) || length(x) == 0) return(tibble())
+  as_tibble(x)
+}
+
+# =========================
+# 2) Sessions (filtrades!) - evita timeouts
+# =========================
+# Important: filtra per any i per session_name per evitar l'etiquetat rar (Sprint com a Race)
+sessions_2024 <- openf1_get("sessions", query = list(year = 2024)) %>% safe_tbl()
+
+sessions_race <- sessions_2024 %>%
+  mutate(
+    date_start = ymd_hms(date_start, tz = "UTC"),
+    session_name_l = tolower(session_name)
+  ) %>%
+  filter(session_name_l == "race") %>%
   arrange(date_start)
 
-write_csv(sessions_race, file.path(out_dir, "sessions_race.csv"))
+write_csv_safe(sessions_race, file.path(out_dir, "sessions_2024_race.csv"))
 
-# Si vols limitar a "últims N anys" segons dates:
-# sessions_race <- sessions_race %>% filter(lubridate::year(date_start) >= 2010)
+session_keys <- sessions_race$session_key
 
 # =========================
-# 3) Funció: descarregar dades per sessió
+# 3) Descarregar paquet per sessió (amb control d'errors)
 # =========================
 download_session_pack <- function(session_key) {
   sk <- as.character(session_key)
   message("Session_key = ", sk)
 
-  # 3.1 Drivers (inclou team_name)
-  drivers <- openf1_get("drivers", query = list(session_key = sk)) %>% as_tibble()
+  # 3.1 Drivers
+  drivers <- openf1_get("drivers", query = list(session_key = sk)) %>% safe_tbl()
   write_csv_safe(drivers, file.path(out_dir, paste0("drivers_", sk, ".csv")))
 
-  # 3.2 Laps (ritme)
-  # ATENCIÓ: pot ser gran. Per sessions molt grans, pots descarregar per driver_number.
-  laps <- openf1_get("laps", query = list(session_key = sk)) %>% as_tibble()
+  # 3.2 Laps
+  laps <- openf1_get("laps", query = list(session_key = sk)) %>% safe_tbl()
   write_csv_safe(laps, file.path(out_dir, paste0("laps_", sk, ".csv")))
 
-  # 3.3 Pit stops (estratègia)
-  pit <- openf1_get("pit", query = list(session_key = sk)) %>% as_tibble()
+  # 3.3 Pit
+  pit <- openf1_get("pit", query = list(session_key = sk)) %>% safe_tbl()
   write_csv_safe(pit, file.path(out_dir, paste0("pit_", sk, ".csv")))
 
-  # 3.4 Race control (SC / flags) - variable de control
-  rc <- openf1_get("race_control", query = list(session_key = sk)) %>% as_tibble()
+  # 3.4 Race control
+  rc <- openf1_get("race_control", query = list(session_key = sk)) %>% safe_tbl()
   write_csv_safe(rc, file.path(out_dir, paste0("race_control_", sk, ".csv")))
 
-  # 3.5 Weather (opcional: no sempre útil)
-  # weather <- openf1_get("weather", query = list(session_key = sk)) %>% as_tibble()
-  # write_csv_safe(weather, file.path(out_dir, paste0("weather_", sk, ".csv")))
+  # 3.5 Position (per obtenir grid i posició final)
+  pos <- openf1_get("position", query = list(session_key = sk)) %>% safe_tbl()
+  write_csv_safe(pos, file.path(out_dir, paste0("position_", sk, ".csv")))
 
+  Sys.sleep(0.2) # una mica de respecte a l'API
   invisible(TRUE)
 }
 
-# =========================
-# 4) Descarregar-ho tot (per cada cursa)
-# =========================
-# Recomanat: prova amb 1-2 sessions primer
-# session_keys <- head(sessions_race$session_key, 2)
+# Descarrega: recomanat començar amb 2-3 sessions
+# session_keys <- head(session_keys, 3)
 
-session_keys <- sessions_race$session_key
+results <- map(session_keys, safely(download_session_pack))
 
-walk(session_keys, safely(download_session_pack))
+# Si vols veure quines han fallat:
+errors <- keep(results, ~ !is.null(.x$error))
+if (length(errors) > 0) {
+  message("Sessions amb error: ", length(errors))
+}
 
 # =========================
-# 5) Unir-ho en taules "master" (base de dades final)
+# 4) Llegir CSVs i muntar "master tables"
 # =========================
 read_many <- function(pattern) {
   files <- list.files(out_dir, pattern = pattern, full.names = TRUE)
   if (length(files) == 0) return(tibble())
-  files %>% map_dfr(read_csv, show_col_types = FALSE)
+  map_dfr(files, read_csv, show_col_types = FALSE)
 }
 
 drivers_all <- read_many("^drivers_.*\\.csv$")
 laps_all    <- read_many("^laps_.*\\.csv$")
 pit_all     <- read_many("^pit_.*\\.csv$")
 rc_all      <- read_many("^race_control_.*\\.csv$")
-
-# Sessions (metadades de circuit)
-sessions_race <- read_csv(file.path(out_dir, "sessions_race.csv"), show_col_types = FALSE)
+pos_all     <- read_many("^position_.*\\.csv$")
 
 # =========================
-# 6) Construir dataset analític (nivell "pilot x cursa")
+# 5) Feature engineering (pilot x cursa)
 # =========================
-# Exemple: mètriques de ritme i consistència per pilot i cursa
+# --- Laps: ritme + consistència ---
+# IMPORTANT: mira quins noms tens realment (no inventis sectors)
+# names(laps_all)
+
 laps_clean <- laps_all %>%
-  # 1) conservar només voltes amb temps vàlid
   filter(!is.na(lap_duration), lap_duration > 0) %>%
-  # 2) eliminar voltes de sortida de box (afecten molt el ritme)
-  filter(is.na(is_pit_out_lap) | is_pit_out_lap == FALSE) %>%
-  # 3) (opcional) treure voltes amb sectors NA si vols consistència per sectors
-  # filter(!is.na(duration_sector_1), !is.na(duration_sector_2), !is.na(duration_sector_3)) %>%
-  # 4) treure outliers per pilot i cursa -> "ritme net"
+  # si existeix is_valid, l'usem; si no, ignorem
+  { if (has_col(., "is_valid")) filter(., is_valid == TRUE) else . } %>%
   group_by(session_key, driver_number) %>%
   mutate(
     mu  = mean(lap_duration, na.rm = TRUE),
     sdv = sd(lap_duration, na.rm = TRUE)
   ) %>%
   ungroup() %>%
-  filter(is.na(sdv) | lap_duration <= mu + 3 * sdv)
+  filter(is.na(sdv) | lap_duration <= mu + 3 * sdv) %>%
+  select(-mu, -sdv)
 
 pace_by_driver <- laps_clean %>%
   group_by(session_key, driver_number) %>%
@@ -199,15 +217,17 @@ pace_by_driver <- laps_clean %>%
     .groups = "drop"
   )
 
+# --- Pit: parades ---
+# pit_duration potser es diu diferent; ho fem robust
 pit_by_driver <- pit_all %>%
   group_by(session_key, driver_number) %>%
   summarise(
     n_pit = n(),
-    pit_total = sum(pit_duration, na.rm = TRUE),
+    pit_total = if (has_col(cur_data(), "pit_duration")) sum(pit_duration, na.rm = TRUE) else NA_real_,
     .groups = "drop"
   )
 
-# Safety Car / flags (simplificat): indicador si hi ha hagut SC
+# --- Race control: Safety Car ---
 sc_by_session <- rc_all %>%
   mutate(msg = tolower(message)) %>%
   group_by(session_key) %>%
@@ -217,22 +237,45 @@ sc_by_session <- rc_all %>%
     .groups = "drop"
   )
 
-# Enllaçar drivers (escuderia) + sessions (circuit)
+# --- Position: grid i posició final ---
+# Idea: agafem la darrera observació temporal per pilot = posició final
+pos_clean <- pos_all %>%
+  mutate(date = ymd_hms(date, tz = "UTC")) %>%
+  arrange(session_key, driver_number, date)
+
+final_pos_by_driver <- pos_clean %>%
+  group_by(session_key, driver_number) %>%
+  summarise(
+    final_position = last(position),
+    .groups = "drop"
+  )
+
+grid_by_driver <- pos_clean %>%
+  group_by(session_key, driver_number) %>%
+  summarise(
+    grid_position = first(position),
+    .groups = "drop"
+  )
+
+# =========================
+# 6) Dataset final analític
+# =========================
 db_final <- pace_by_driver %>%
   left_join(pit_by_driver, by = c("session_key", "driver_number")) %>%
-  left_join(drivers_all %>% select(session_key, driver_number, full_name, team_name),
-            by = c("session_key", "driver_number")) %>%
+  left_join(final_pos_by_driver, by = c("session_key", "driver_number")) %>%
+  left_join(grid_by_driver, by = c("session_key", "driver_number")) %>%
+  left_join(drivers_all %>% select(any_of(c("session_key","driver_number","full_name","team_name"))),
+            by = c("session_key","driver_number")) %>%
   left_join(sessions_race %>% select(session_key, circuit_short_name, country_name, date_start),
             by = "session_key") %>%
   left_join(sc_by_session, by = "session_key") %>%
   mutate(
     n_pit = coalesce(n_pit, 0L),
-    pit_total = coalesce(pit_total, 0)
+    pit_total = ifelse(is.na(pit_total), 0, pit_total)
   )
 
-write_csv(db_final, file.path(out_dir, "db_final_pilot_x_race.csv"))
-
-message("Fet! Fitxer final: ", file.path(out_dir, "db_final_pilot_x_race.csv"))
+write_csv_safe(db_final, file.path(out_dir, "db_final_pilot_x_race_2024.csv"))
+message("Fet! Fitxer final: ", file.path(out_dir, "db_final_pilot_x_race_2024.csv"))
 
 ```
 
