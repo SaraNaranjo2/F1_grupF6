@@ -9,8 +9,8 @@ date: ""
 abstract: 
   Fer cap al final
 output:
-  rticles::arxiv_article:
-    keep_tex: true
+  pdf_document:
+    latex_engine: pdflatex
 bibliography: references.bib
 ---
 \newpage
@@ -35,8 +35,7 @@ bibliography: references.bib
 *(Què volem predir/explicar: p. ex., posició final, punts, abandons...)*
 
 ## Pipeline
-*(Neteja: feature engineering -> particions train/test → models.)*
-
+*(Neteja: feature engineering -> particions train/test -> models.)*
 
 ```{r}
 # =========================
@@ -237,6 +236,7 @@ message("Fet! Fitxer final: ", file.path(out_dir, "db_final_pilot_x_race.csv"))
 
 ```
 
+
 ## Models
 *(Llistat: p. ex., regressió/GBM/XGBoost/Random Forest; hiperparàmetres bàsics.)*
 
@@ -264,8 +264,3 @@ message("Fet! Fitxer final: ", file.path(out_dir, "db_final_pilot_x_race.csv"))
 \newpage
 
 # Bibliografia
-
-
-
-
-
