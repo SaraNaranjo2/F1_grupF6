@@ -39,6 +39,11 @@ vignettes/*.pdf
 # R Environment Variables
 .Renviron
 
+# R Markdown outputs
+*.html
+*.pdf
+*_files/
+
 # pkgdown site
 docs/
 
